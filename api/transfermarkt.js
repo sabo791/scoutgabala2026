@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { url } = req.body;
+    const { url } = req.body || {};
 
     if (!url || !url.includes("transfermarkt")) {
       return res.status(400).json({ error: "Transfermarkt linki düzgün deyil" });
@@ -21,7 +21,8 @@ export default async function handler(req, res) {
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    const name = $("h1").first().text().replace(/\s+/g, " ").trim();
+    const title = $("title").text();
+    const name = title.split("-")[0].trim();
 
     return res.status(200).json({
       name: name || "Ad tapılmadı",
