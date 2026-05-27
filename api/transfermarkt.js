@@ -1,1 +1,39 @@
-const cheerio=require("cheerio");function clean(v){return String(v||"").replace(/\s+/g," ").trim()}function pos(p){p=clean(p).toLowerCase().replace(/-/g," ");if(p.includes("goalkeeper"))return"GK";if(p.includes("centre back")||p.includes("center back"))return"CB";if(p.includes("left back"))return"LB";if(p.includes("right back"))return"RB";if(p.includes("defensive midfield"))return"DM";if(p.includes("central midfield"))return"CM";if(p.includes("attacking midfield"))return"AM";if(p.includes("left winger"))return"LW";if(p.includes("right winger"))return"RW";if(p.includes("centre forward")||p.includes("center forward")||p.includes("striker"))return"ST";return p}function id(url){let m=String(url).match(/spieler\/(\d+)/);return m?m[1]:""}function text(html,label){let r=new RegExp(label+":[\\s\\S]{0,1000}?<span[^>]*>([^<]+)<\\/span>","i");return clean(html.match(r)?.[1]||"")}function title(html,label){let r=new RegExp(label+":[\\s\\S]{0,1500}?title=\"([^\"]+)\"","i");return clean(html.match(r)?.[1]||"")}function height(t){let m=clean(t).replace(",",".").match(/([0-9]+(?:\.[0-9]+)?)/);if(!m)return"";let n=Number(m[1]);return n<3?String(Math.round(n*100)):String(Math.round(n))}async function fetchHtml(url){let r=await fetch(url,{headers:{"User-Agent":"Mozilla/5.0 Chrome/124 Safari/537.36","Accept-Language":"en-US,en;q=0.9"}}),h=await r.text();if(!r.ok||h.length<1000||/Access denied|captcha|blocked/i.test(h))throw Error("Transfermarkt blokladı və ya cavab vermədi");return h}function parse(h,url){let $=cheerio.load(h),name=clean($("h1.data-header__headline-wrapper").first().text()).replace(/^#\d+\s*/,"");if(!name)name=clean($("meta[property='og:title']").attr("content")).replace(/- Player profile.*$/i,"").replace(/\| Transfermarkt.*$/i,"");let dob=text(h,"Date of birth/Age"),age=dob.match(/\((\d+)\)/)?.[1]||"",pf=text(h,"Position");return{playerId:id(url),name,age,dateOfBirth:dob,country:title(h,"Citizenship")||text(h,"Citizenship"),club:title(h,"Current club")||text(h,"Current club"),position:pos(pf),positionFull:pf,foot:text(h,"Foot"),height:height(text(h,"Height")),contractEnd:text(h,"Contract expires"),joined:text(h,"Joined"),agent:title(h,"Player agent")||text(h,"Player agent"),marketValue:clean($(".data-header__market-value-wrapper").first().text()),transfermarkt:url}}module.exports=async(req,res)=>{res.setHeader("Access-Control-Allow-Origin","*");res.setHeader("Access-Control-Allow-Methods","POST, OPTIONS");res.setHeader("Access-Control-Allow-Headers","Content-Type");if(req.method==="OPTIONS")return res.status(200).end();if(req.method!=="POST")return res.status(405).json({error:"Only POST allowed"});try{let{url}=req.body||{};if(!url||!String(url).includes("transfermarkt"))return res.status(400).json({error:"Transfermarkt linki düzgün deyil"});let html=await fetchHtml(url),p=parse(html,url);p.transferHistory=[];p.careerStats=[];p.notes=["Transfermarkt açıq məlumat importu",p.positionFull?`Transfermarkt mövqesi: ${p.positionFull}`:"",p.dateOfBirth?`Doğum tarixi: ${p.dateOfBirth}`:"",p.joined?`Kluba qoşulma: ${p.joined}`:"",p.agent?`Agent: ${p.agent}`:""].filter(Boolean).join("\n");return res.status(200).json(p)}catch(e){return res.status(500).json({error:"Transfermarkt import alınmadı",detail:String(e.message||e)})}};
+import * as cheerio from "cheerio";
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Only POST allowed" });
+  }
+
+  try {
+    const { url } = req.body;
+
+    if (!url || !url.includes("transfermarkt")) {
+      return res.status(400).json({ error: "Transfermarkt linki düzgün deyil" });
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const name = $("h1").first().text().replace(/\s+/g, " ").trim();
+
+    return res.status(200).json({
+      name: name || "Ad tapılmadı",
+      age: "",
+      position: "",
+      club: "",
+      transfermarkt: url,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      error: "Transfermarkt import alınmadı",
+      detail: String(e.message || e),
+    });
+  }
+}
